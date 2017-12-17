@@ -1,6 +1,6 @@
 # BaiduEarthApi
 # A simple usage of Baidu Api 
-
+You can directly visit the webpage by https://sophyt.github.io/BaiduEarthApi/
 This is a homework for the course Communications and Networking.
 
 I have to say that index.html can only be opened with IE or Firefox. I haved also tried Chorme and Edge, which appear to be unsatisfying. Such error of offset occurs mainly for the function of positioning differs in various browsers with different H5 attribute. Related explaination can be found in official documents and BBS of Baidu Earth Api.
