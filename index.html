@@ -1,46 +1,200 @@
+
 <!DOCTYPE html>
 <html>
 <head>
-	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-	<meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
-	<style type="text/css">
-		body, html {width: 100%;height: 100%;margin:0;font-family:"微软雅黑";}
-		#allmap{width:100%;height:500px;}
-		#r-result{width:100%;margin-top:5px;}
-		p{margin:5px; font-size:14px;}
-	</style>
-	<script type="text/javascript" src="http://api.map.baidu.com/api?v=2.0&ak=juyqNhNkriQm5ocRZuPNsCl6yqX55RH6"></script>
-	<title>添加清华校园微观图</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+    <style type="text/css">
+        body, html, #allmap {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            margin: 0;
+            font-family: "微软雅黑";
+        }
+
+        .one_line_buttons {
+            display: inline-block;
+        }
+
+        button {
+            background-color: burlywood;
+            border: none;
+            color: white;
+            padding: 7px 10px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 12px;
+            margin: 2px 1px;
+            cursor: pointer;
+        }
+
+        button:hover{
+            background-color:palegoldenrod;
+        }
+    </style>
+    <script type="text/javascript" src="http://api.map.baidu.com/api?v=2.0&ak=juyqNhNkriQm5ocRZuPNsCl6yqX55RH6	"></script>
+    <script type="text/javascript" src="http://api.map.baidu.com/library/GeoUtils/1.2/src/GeoUtils_min.js"></script>
+
+
+    <title>陪你走进紫金港 唐心怡</title>
 </head>
 <body>
-	<div id="allmap"></div>
-	<div id="r-result">
-		<input type="button" onclick="add_control();" value="添加" />
-		<input type="button" onclick="delete_control();" value="删除" />
-	</div>
+    <h4>请点击“开始选取坐标”按钮，先后选择起点和终点，再点击“结束选取坐标”按钮，可爱的小人就能引导你在紫金港游览啦！</h4>
+    <h6>请使用IE打开此网页，使用Chrome、Firefox都浏览器可能出现定位严重偏移的情况<br />
+    由于地图上小人儿图标的运动是通过将图标向路线上的点多次重新放置实现的，而这些点又是百度API中的getPath()直接给出，开发者唐心怡暂时还没有找到控制两点之间距离的方法，因此在选择路径较短时可能出现移动明显不匀速的现象</h6>
+    <div>
+        <div class="one_line_buttons">
+            <button type="button" onclick="start_select()">开始选取坐标</button>
+        </div>
+
+        <div class="one_line_buttons">
+            <button type="button" onclick="end_select()">结束选取坐标</button>
+        </div>
+
+        <div class="one_line_buttons">
+            <button type="button" onclick="clear_route()">清空路径</button>
+        </div>
+    </div>
+
+    <div id="allmap" style="width:100%; height: 100%;"></div>
 </body>
 </html>
 <script type="text/javascript">
-	// 百度地图API功能
-	var map = new BMap.Map('allmap');
-	map.addControl(new BMap.NavigationControl());
-	map.centerAndZoom(new BMap.Point(116.332782, 40.007978), 16);
-	var tileLayer = new BMap.TileLayer({isTransparentPng: true});
-	tileLayer.getTilesUrl = function(tileCoord, zoom) {
-		var x = tileCoord.x;
-		var y = tileCoord.y;
-		return 'http://lbsyun.baidu.com/jsdemo/demo/tiles/' + zoom + '/tile' + x + '_' + y + '.png';  //根据当前坐标，选取合适的瓦片图
-	}
+    //选择状态
+    var STAGE_SELECT_START_POINT = 0;
+    var STAGE_SELECT_END_POINT = 1;
+    var STAGE_SELECT_DONE = 2;
 
-	var copyCtrl = new BMap.CopyrightControl({anchor: BMAP_ANCHOR_BOTTOM_RIGHT});
-	copyCtrl.addCopyright({id: 1, content: "版权说明：清华校园图片取自互联网"});
-	map.addControl(copyCtrl);
-	
-	function add_control(){
-		map.addTileLayer(tileLayer);
-	}
-	function delete_control(){
-		map.removeTileLayer(tileLayer);
-	}
-	add_control();
+    // 初始化百度地图
+    var map = new BMap.Map("allmap");
+    map.centerAndZoom(new BMap.Point(120.094, 30.307), 16);
+
+    //增加地图控件
+    map.addControl(new BMap.NavigationControl());
+    map.addControl(new BMap.ScaleControl());
+
+    //把校区范围圈起来
+    var outline = [new BMap.Point(120.087004, 30.31614), new BMap.Point(120.089448, 30.301517),
+    				new BMap.Point(120.090993, 30.3008), new BMap.Point(120.099006, 30.301236),
+    				new BMap.Point(120.098718, 30.311214), new BMap.Point(120.097892, 30.315844),
+					new BMap.Point(120.094685, 30.31494), new BMap.Point(120.094532, 30.316865)];
+    var polygon = new BMap.Polygon(outline);
+    polygon.setFillColor("");
+    map.addOverlay(polygon);
+
+    var drivingRoute = new BMap.WalkingRoute(map, { renderOptions: { map: map, autoViewport: true } });    //驾车实例
+
+    var markers = [];
+
+    // 逻辑
+    var SelectedPoints = [];
+    var nStage = STAGE_SELECT_START_POINT;
+    var bSelect = false;
+    var bFinsihSelect = false;
+    var myIcon = new BMap.Icon("http://lbsyun.baidu.com/jsdemo/img/Mario.png", new BMap.Size(32, 70), {    //人的图标
+        imageOffset: new BMap.Size(0, 0)
+    });
+
+    function select_point(e) {
+        if (bSelect) {
+            console.log(e.point);
+            var strText = "";
+
+            switch (nStage) {
+                case STAGE_SELECT_START_POINT:
+                    SelectedPoints[nStage] = e.point;
+                    strText = "起点";
+                    alert("选择" + strText + e.point.lng + "," + e.point.lat);
+                    break;
+                case STAGE_SELECT_END_POINT:
+                    SelectedPoints[nStage] = e.point;
+                    strText = "终点";
+                    alert("选择" + strText + e.point.lng + "," + e.point.lat);
+                    break;
+                default:
+                    break;
+            }
+            console.log(SelectedPoints[nStage])
+            console.log(nStage);
+
+            var marker = new BMap.Marker(SelectedPoints[nStage]);
+            var label = new BMap.Label(strText, { offset: new BMap.Size(20, -10) });
+            marker.setLabel(label);
+            map.addOverlay(marker);
+
+            markers.push(marker);
+
+            ++nStage;
+
+            if (nStage == STAGE_SELECT_DONE) {
+                nStage = 0;
+                bFinsihSelect = true;
+                end_select();
+            }
+        }
+
+    };
+
+    map.addEventListener("click", select_point);
+    var pts;
+    function start_select() {
+        bSelect = true;
+        bFinsihSelect = false;
+    }
+
+    function end_select() {
+        if (bFinsihSelect) {
+            bSelect = false;
+            show_route();
+        }
+        else {
+            alert("你只选择了" + nStage + "个点，请继续选择");
+        }
+    }
+
+    function show_route() {
+        if (bFinsihSelect) {
+            drivingRoute.search(SelectedPoints[0], SelectedPoints[1])
+        } else {
+            alert("你没有选择起点和终点");
+        }
+    }
+
+    function clear_route() {
+        drivingRoute.clearResults();
+        map.clearOverlays();
+        alert("路径已清除");
+    }
+
+    window.run = function () {
+        drivingRoute.search(SelectedPoints[0], SelectedPoints[1]);
+
+        drivingRoute.setSearchCompleteCallback(function () {
+            var pts = drivingRoute.getResults().getPlan(0).getRoute(0).getPath();    //通过实例，获得一系列点的数组
+            paths = pts.length;    //获得有几个点
+
+            var carMk = new BMap.Marker(pts[0], { icon: myIcon });
+            map.addOverlay(carMk);
+            i = 0;
+            function resetMkPoint(i) {
+                carMk.setPosition(pts[i]);
+                if (i < paths) {
+                    setTimeout(function () {
+                        i++;
+                        resetMkPoint(i);
+                    }, 300);
+                }
+            }
+            setTimeout(function () {
+                resetMkPoint(0);
+            }, 1000)
+
+        });
+    }
+
+    setTimeout(function () {
+        run();
+    }, 1000);
 </script>
